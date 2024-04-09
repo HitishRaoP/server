@@ -1,6 +1,6 @@
 const express = require("express");
-const amazonApp = require("./amazon");
-const flipkartApp = require("./flipkart");
+const amazonApp = require("./source/amazon");
+const flipkartApp = require("./source/flipkart");
 
 const app = express();
 const port = process.env.PORT || 3000;
