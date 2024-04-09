@@ -1,10 +1,16 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 
 const app = express();
 const port = 4000;
+
+if(process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+  chrome = require('chrome-aws-lambda');
+  puppeteer = require('puppeteer-core');
+} else {
+  puppeteer = require('puppeteer');
+}
 
 app.use(
   cors({

@@ -1,5 +1,4 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 
@@ -11,10 +10,28 @@ app.use(cors({
   methods: 'GET,POST',
 }));
 
+if(process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+  chrome = require('chrome-aws-lambda');
+  puppeteer = require('puppeteer-core');
+} else {
+  puppeteer = require('puppeteer');
+}
+
 app.use(bodyParser.json());
 
 const scrapeAmazon = async (query) => {
-  const browser = await puppeteer.launch({ headless: true });
+
+  if(process.env.AWS_LAMBDA_FUNCTION_VERSION)
+  {
+    options = {
+      args: [...chrome.args, "--hide-scrollbars", "--disable-web-security"],
+      defaultViewport: chrome.defaultViewport,
+      executablePath: await chrome.executablePath,
+      headless: true,
+    };
+  }
+
+  const browser = await puppeteer.launch(options);
   const page = await browser.newPage();
   await page.goto("https://www.amazon.in");
   await page.type("#twotabsearchtextbox", query);
