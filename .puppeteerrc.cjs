@@ -1,4 +1,4 @@
-const {join} = require('path');
+const {join} = require('/home/sbx_user1051/.cache/puppeteer');
 
 /**
  * @type {import("puppeteer").Configuration}
