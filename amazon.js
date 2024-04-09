@@ -5,24 +5,25 @@ const cors = require("cors");
 const app = express();
 const port = 8080;
 
-app.use(cors({
-  origin: 'http://localhost:3000', 
-  methods: 'GET,POST',
-}));
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    methods: "GET,POST",
+  })
+);
 
-if(process.env.AWS_LAMBDA_FUNCTION_VERSION) {
-  chrome = require('chrome-aws-lambda');
-  puppeteer = require('puppeteer-core');
+if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+  chrome = require("chrome-aws-lambda");
+  puppeteer = require("puppeteer-core");
 } else {
-  puppeteer = require('puppeteer');
+  puppeteer = require("puppeteer");
 }
 
 app.use(bodyParser.json());
 
 const scrapeAmazon = async (query) => {
-
-  if(process.env.AWS_LAMBDA_FUNCTION_VERSION)
-  {
+  let options = {};
+  if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
     options = {
       args: [...chrome.args, "--hide-scrollbars", "--disable-web-security"],
       defaultViewport: chrome.defaultViewport,
@@ -44,9 +45,8 @@ const scrapeAmazon = async (query) => {
   );
 
   // Gather price
-  const price = await page.$$eval(
-    ".a-price-whole",
-    (nodes) => nodes.map((n) => n.innerText)
+  const price = await page.$$eval(".a-price-whole", (nodes) =>
+    nodes.map((n) => n.innerText)
   );
 
   // Gather review
@@ -55,8 +55,9 @@ const scrapeAmazon = async (query) => {
   );
 
   // Gather image URL
-  const imageUrl = await page.$$eval(".puis-flex-expand-height , .s-image", (nodes) =>
-    nodes.map((n) => n.getAttribute("src"))
+  const imageUrl = await page.$$eval(
+    ".puis-flex-expand-height , .s-image",
+    (nodes) => nodes.map((n) => n.getAttribute("src"))
   );
 
   // Consolidate product search data
@@ -75,10 +76,8 @@ const scrapeAmazon = async (query) => {
 
 app.get("/:query", async (req, res) => {
   let { query } = req.params;
-  query = query.replace(/\s+/g, "+");
   try {
     const amazonData = await scrapeAmazon(query);
-
     res.status(200).json(amazonData);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -88,6 +87,5 @@ app.get("/:query", async (req, res) => {
 app.listen(port, () => {
   console.log(`Amazon Server running at http://localhost:${port}`);
 });
-
 
 module.exports = app;

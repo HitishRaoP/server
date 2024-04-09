@@ -22,7 +22,17 @@ app.use(
 app.use(bodyParser.json());
 
 const scrapeFlipkart = async (query) => {
-  const browser = await puppeteer.launch({ headless: true });
+  let options = {};
+  if(process.env.AWS_LAMBDA_FUNCTION_VERSION)
+  {
+    options = {
+      args: [...chrome.args, "--hide-scrollbars", "--disable-web-security"],
+      defaultViewport: chrome.defaultViewport,
+      executablePath: await chrome.executablePath,
+      headless: true,
+    };
+  }
+  const browser = await puppeteer.launch(options);
   const page = await browser.newPage();
   await page.goto("https://www.flipkart.com/");
   await page.type(".Pke_EE", query);
