@@ -6,13 +6,13 @@ const { JSDOM } = jsdom;
 const app = express();
 const port = 8080;
 
+const Asin = [];
 function getQueryUrl(query) {
   return `https://www.amazon.in/s?k=${query}`;
 }
 
-async function getPrice(query) {
-  const ProductDetails = [];
-  query = query.replace(" ", "+");
+async function getAsin(query) {
+  query = query.replace(/%20/g, "+");
   const queryUrl = getQueryUrl(query);
   const { data } = await axios.get(queryUrl, {
     headers: {
@@ -28,27 +28,22 @@ async function getPrice(query) {
   });
   const dom = new JSDOM(data);
 
-  //Getting the price
-  const prices = dom.window.document.querySelectorAll(".a-price-whole");
+  const Asins = dom.window.document.querySelectorAll("[data-asin]");
 
-  //Getting the title
-  const titles = dom.window.document.querySelectorAll(
-    ".a-color-base.a-text-normal"
-  );
-
-  const Mrp = dom.window.document.querySelectorAll(".a-text-price span");
-
-  // Combine prices and titles into ProductDetails array
-  for (let i = 0; i < Math.min(prices.length, titles.length); i++) {
-    ProductDetails.push({
-      Title: titles[i].textContent.trim(),
-      Price: prices[i].textContent.trim(),
-      Mrp: Mrp[i].textContent.trim(),
-    });
+  //Pushing the data into an array
+  for (let i = 0; i < Asins.length; i++) {
+    const asin = Asins[i].getAttribute("data-asin");
+    if (asin) {
+      Asin.push({
+        Asin: asin,
+        Url: `https://www.amazon.in/dp/` + asin,
+      });
+    }
   }
 
-  return ProductDetails;
+  return Asin;
 }
+
 
 app.get("/", async (req, res) => {
   const query = req.query.q;
@@ -57,7 +52,7 @@ app.get("/", async (req, res) => {
   }
 
   try {
-    const Price = await getPrice(query);
+    const Price = await getAsin(query);
     res.json(Price);
   } catch (error) {
     console.error(error);
@@ -68,6 +63,5 @@ app.get("/", async (req, res) => {
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
 });
-
 
 module.exports = app;
