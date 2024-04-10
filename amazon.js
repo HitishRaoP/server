@@ -1,91 +1,73 @@
 const express = require("express");
-const bodyParser = require("body-parser");
-const cors = require("cors");
+const axios = require("axios");
+const jsdom = require("jsdom");
+const { JSDOM } = jsdom;
 
 const app = express();
 const port = 8080;
 
-app.use(
-  cors({
-    origin: "http://localhost:3000",
-    methods: "GET,POST",
-  })
-);
-
-if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
-  chrome = require("chrome-aws-lambda");
-  puppeteer = require("puppeteer-core");
-} else {
-  puppeteer = require("puppeteer");
+function getQueryUrl(query) {
+  return `https://www.amazon.in/s?k=${query}`;
 }
 
-app.use(bodyParser.json());
+async function getPrice(query) {
+  const ProductDetails = [];
+  query = query.replace(" ", "+");
+  const queryUrl = getQueryUrl(query);
+  const { data } = await axios.get(queryUrl, {
+    headers: {
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      Host: "www.amazon.in",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/111.0",
+      Pragma: "no-cache",
+      TE: "Trailers",
+      "Upgrade-Insecure-Requests": 1,
+    },
+  });
+  const dom = new JSDOM(data);
 
-const scrapeAmazon = async (query) => {
-  let options = {};
-  if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
-    options = {
-      args: [...chrome.args, "--hide-scrollbars", "--disable-web-security"],
-      defaultViewport: chrome.defaultViewport,
-      executablePath: await chrome.executablePath,
-      headless: true,
-    };
+  //Getting the price
+  const prices = dom.window.document.querySelectorAll(".a-price-whole");
+
+  //Getting the title
+  const titles = dom.window.document.querySelectorAll(
+    ".a-color-base.a-text-normal"
+  );
+
+  const Mrp = dom.window.document.querySelectorAll(".a-text-price span");
+
+  // Combine prices and titles into ProductDetails array
+  for (let i = 0; i < Math.min(prices.length, titles.length); i++) {
+    ProductDetails.push({
+      Title: titles[i].textContent.trim(),
+      Price: prices[i].textContent.trim(),
+      Mrp: Mrp[i].textContent.trim(),
+    });
   }
 
-  const browser = await puppeteer.launch(options);
-  const page = await browser.newPage();
-  await page.goto("https://www.amazon.in");
-  await page.type("#twotabsearchtextbox", query);
-  await page.click("#nav-search-submit-button");
-  await page.waitForSelector(".s-pagination-next");
+  return ProductDetails;
+}
 
-  // Gather product title
-  const title = await page.$$eval(".a-color-base.a-text-normal", (nodes) =>
-    nodes.map((n) => n.innerText)
-  );
+app.get("/", async (req, res) => {
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  }
 
-  // Gather price
-  const price = await page.$$eval(".a-price-whole", (nodes) =>
-    nodes.map((n) => n.innerText)
-  );
-
-  // Gather review
-  const review = await page.$$eval(".aok-align-bottom", (nodes) =>
-    nodes.map((n) => n.innerText)
-  );
-
-  // Gather image URL
-  const imageUrl = await page.$$eval(
-    ".puis-flex-expand-height , .s-image",
-    (nodes) => nodes.map((n) => n.getAttribute("src"))
-  );
-
-  // Consolidate product search data
-  const amazonSearchArray = title.slice(0, 50).map((value, index) => {
-    return {
-      Title: title[index],
-      Price: price[index],
-      Rating: review[index],
-      ImageUrl: imageUrl[index],
-    };
-  });
-
-  await browser.close();
-  return amazonSearchArray;
-};
-
-app.get("/:query", async (req, res) => {
-  let { query } = req.params;
   try {
-    const amazonData = await scrapeAmazon(query);
-    res.status(200).json(amazonData);
+    const Price = await getPrice(query);
+    res.json(Price);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 app.listen(port, () => {
-  console.log(`Amazon Server running at http://localhost:${port}`);
+  console.log(`Server running at http://localhost:${port}`);
 });
+
 
 module.exports = app;
