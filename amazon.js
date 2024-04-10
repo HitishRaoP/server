@@ -28,6 +28,8 @@ async function getAsin(query) {
   });
   const dom = new JSDOM(data);
 
+  const Asin = []; // Move the Asin array declaration inside the function
+
   const Asins = dom.window.document.querySelectorAll("[data-asin]");
 
   //Pushing the data into an array
