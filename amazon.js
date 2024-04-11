@@ -18,7 +18,6 @@ function getQueryUrl(query) {
 }
 
 async function getAsin(query) {
-  query = query.replace(/%20/g, "+");
   const queryUrl = getQueryUrl(query);
   const { data } = await axios.get(queryUrl, {
     headers: {
@@ -50,6 +49,7 @@ async function getAsin(query) {
 
   return Asin;
 }
+
 
 async function saveAsinData(format, data) {
   switch (format) {

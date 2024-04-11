@@ -11,10 +11,11 @@ app.use(express.json()); // Parse JSON bodies
 app.use("/amazon", amazonApp);
 
 app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+  const host = process.env.VERCEL_URL || `http://localhost:${port}`;
+  console.log(`Server running at ${host}`);
 });
 
-module.exports = app;
+
 
 const allowCors = fn => async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', true)
@@ -39,4 +40,6 @@ const handler = (req, res) => {
 }
 
 module.exports = allowCors(handler)
+
+module.exports = app;
 
