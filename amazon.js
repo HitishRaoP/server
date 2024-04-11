@@ -1,10 +1,10 @@
 const express = require("express");
+const cors = require("cors");
 const axios = require("axios");
 const jsdom = require("jsdom");
 const { JSDOM } = jsdom;
 const fs = require("fs");
 const ObjectsToCsv = require("objects-to-csv");
-const cors = require("cors");
 const XLSX = require("xlsx");
 
 const app = express();
@@ -59,14 +59,14 @@ async function saveAsinData(format, data) {
       const fileNameCsv = `data.${format}`;
       fs.writeFileSync(fileNameCsv, formattedData);
       return fileNameCsv;
-      case "xlsx":
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-        const xlsxBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
-        const fileNameXlsx = `data.${format}`;
-        fs.writeFileSync(fileNameXlsx, xlsxBuffer);
-        return fileNameXlsx;
+    case "xlsx":
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+      const xlsxBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
+      const fileNameXlsx = `data.${format}`;
+      fs.writeFileSync(fileNameXlsx, xlsxBuffer);
+      return fileNameXlsx;
     case "json":
       const formattedJson = JSON.stringify(data, null, 2);
       const fileNameJson = `data.${format}`;
@@ -89,34 +89,30 @@ app.get("/", async (req, res) => {
   try {
     const asins = await getAsin(query);
 
-    if (outputFields.length === 0) {
-      if (!format) {
-        return res.json(asins);
-      }
-      const fileName = await saveAsinData(format, asins);
-      res.download(fileName, () => {
-        fs.unlinkSync(fileName); // Delete the file after download
-      });
-      return;
-    }
+    let outputData = asins;
 
-    const filteredAsins = asins.map(asin => {
-      const filteredAsin = {};
-      outputFields.forEach(field => {
-        if (asin[field]) {
-          filteredAsin[field] = asin[field];
-        }
+    if (outputFields.length > 0) {
+      outputData = asins.map(asin => {
+        const filteredAsin = {};
+        outputFields.forEach(field => {
+          if (asin[field]) {
+            filteredAsin[field] = asin[field];
+          }
+        });
+        return filteredAsin;
       });
-      return filteredAsin;
-    });
+    }
 
     if (!format) {
-      return res.json(filteredAsins);
+      return res.json(outputData);
     }
 
-    const fileName = await saveAsinData(format, filteredAsins);
+    const fileName = await saveAsinData(format, outputData);
+
+    // Return the file as a download
     res.download(fileName, () => {
-      fs.unlinkSync(fileName); // Delete the file after download
+      // Delete the file after download
+      fs.unlinkSync(fileName);
     });
   } catch (error) {
     console.error(error);
@@ -124,30 +120,5 @@ app.get("/", async (req, res) => {
   }
 });
 
-const allowCors = (fn) => async (req, res) => {
-  res.setHeader("Access-Control-Allow-Credentials", true);
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  // another common pattern
-  // res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET,OPTIONS,PATCH,DELETE,POST,PUT"
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version"
-  );
-  if (req.method === "OPTIONS") {
-    res.status(200).end();
-    return;
-  }
-  return await fn(req, res);
-};
-
-const handler = (req, res) => {
-  const d = new Date();
-  res.end(d.toString());
-};
-
-module.exports = allowCors(handler);
+// Export the Express app
 module.exports = app;
