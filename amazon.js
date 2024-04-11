@@ -3,18 +3,18 @@ const axios = require("axios");
 const jsdom = require("jsdom");
 const { JSDOM } = jsdom;
 const fs = require("fs");
-const ObjectsToCsv = require('objects-to-csv');
+const ObjectsToCsv = require("objects-to-csv");
 const cors = require("cors");
+const XLSX = require("xlsx");
 
 const app = express();
-const port = 8080;
 
 app.use(cors());
 app.use(express.json()); // Parse JSON bodies
 
-const queryUrlBase = "https://www.amazon.in/s?k=";
 function getQueryUrl(query) {
-  return queryUrlBase + encodeURIComponent(query);
+  const queryUrlBase = `https://www.amazon.in/s?k=${query}&tag=hitish04-21`;
+  return queryUrlBase;
 }
 
 async function getAsin(query) {
@@ -51,58 +51,77 @@ async function getAsin(query) {
   return Asin;
 }
 
+async function saveAsinData(format, data) {
+  switch (format) {
+    case "csv":
+      const csv = new ObjectsToCsv(data);
+      const formattedData = await csv.toString();
+      const fileNameCsv = `data.${format}`;
+      fs.writeFileSync(fileNameCsv, formattedData);
+      return fileNameCsv;
+      case "xlsx":
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+        const xlsxBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
+        const fileNameXlsx = `data.${format}`;
+        fs.writeFileSync(fileNameXlsx, xlsxBuffer);
+        return fileNameXlsx;
+    case "json":
+      const formattedJson = JSON.stringify(data, null, 2);
+      const fileNameJson = `data.${format}`;
+      fs.writeFileSync(fileNameJson, formattedJson);
+      return fileNameJson;
+    default:
+      throw new Error("Invalid format");
+  }
+}
+
 app.get("/", async (req, res) => {
   const query = req.query.q;
+  const format = req.query.format;
+  const outputFields = req.query.fields?.split(",") || [];
+
   if (!query) {
     return res.status(400).json({ error: "Query parameter 'q' is required" });
   }
 
   try {
     const asins = await getAsin(query);
-    res.json(asins);
+
+    if (outputFields.length === 0) {
+      if (!format) {
+        return res.json(asins);
+      }
+      const fileName = await saveAsinData(format, asins);
+      res.download(fileName, () => {
+        fs.unlinkSync(fileName); // Delete the file after download
+      });
+      return;
+    }
+
+    const filteredAsins = asins.map(asin => {
+      const filteredAsin = {};
+      outputFields.forEach(field => {
+        if (asin[field]) {
+          filteredAsin[field] = asin[field];
+        }
+      });
+      return filteredAsin;
+    });
+
+    if (!format) {
+      return res.json(filteredAsins);
+    }
+
+    const fileName = await saveAsinData(format, filteredAsins);
+    res.download(fileName, () => {
+      fs.unlinkSync(fileName); // Delete the file after download
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error" });
   }
-});
-
-app.post("/save-csv", async (req, res) => {
-  try {
-    const data = req.body;
-    const csv = new ObjectsToCsv(data);
-    await csv.toDisk("./data.csv");
-    res.sendStatus(200);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-app.post("/save-excel", async (req, res) => {
-  try {
-    const data = req.body;
-    const csv = new ObjectsToCsv(data);
-    await csv.toDisk("./data.xls");
-    res.sendStatus(200);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-app.post("/save-json", async (req, res) => {
-  try {
-    const data = req.body;
-    fs.writeFileSync("./data.json", JSON.stringify(data, null, 2));
-    res.sendStatus(200);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
 });
 
 module.exports = app;
