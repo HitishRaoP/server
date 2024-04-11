@@ -5,7 +5,7 @@ const jsdom = require("jsdom");
 const { JSDOM } = jsdom;
 const fs = require("fs");
 const ObjectsToCsv = require("objects-to-csv");
-const XLSX = require("xlsx");
+const ExcelJS = require("exceljs");
 
 const app = express();
 
@@ -56,26 +56,34 @@ async function saveAsinData(format, data) {
     case "csv":
       const csv = new ObjectsToCsv(data);
       const formattedData = await csv.toString();
-      const fileNameCsv = `data.${format}`;
-      fs.writeFileSync(fileNameCsv, formattedData);
-      return fileNameCsv;
+      return formattedData;
     case "xlsx":
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-      const xlsxBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
-      const fileNameXlsx = `data.${format}`;
-      fs.writeFileSync(fileNameXlsx, xlsxBuffer);
-      return fileNameXlsx;
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("Sheet1");
+
+      // Add headers
+      const headers = Object.keys(data[0]);
+      sheet.addRow(headers);
+
+      // Add data
+      data.forEach(item => {
+        const row = [];
+        headers.forEach(header => {
+          row.push(item[header]);
+        });
+        sheet.addRow(row);
+      });
+
+      // Generate Excel file buffer
+      const buffer = await workbook.xlsx.writeBuffer();
+      return buffer;
     case "json":
-      const formattedJson = JSON.stringify(data, null, 2);
-      const fileNameJson = `data.${format}`;
-      fs.writeFileSync(fileNameJson, formattedJson);
-      return fileNameJson;
+      return JSON.stringify(data, null, 2);
     default:
       throw new Error("Invalid format");
   }
 }
+
 
 app.get("/", async (req, res) => {
   const query = req.query.q;
@@ -107,13 +115,13 @@ app.get("/", async (req, res) => {
       return res.json(outputData);
     }
 
-    const fileName = await saveAsinData(format, outputData);
+    const fileContent = await saveAsinData(format, outputData);
 
-    // Return the file as a download
-    res.download(fileName, () => {
-      // Delete the file after download
-      fs.unlinkSync(fileName);
-    });
+    // Return the file content as a download
+    res.setHeader('Content-Disposition', `attachment; filename="data.${format}"`);
+    res.setHeader('Content-Type', `application/${format}`);
+
+    res.send(fileContent);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error" });
