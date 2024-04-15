@@ -1,132 +1,110 @@
 const express = require("express");
 const cors = require("cors");
-const axios = require("axios");
-const jsdom = require("jsdom");
-const { JSDOM } = jsdom;
-const fs = require("fs");
-const ObjectsToCsv = require("objects-to-csv");
-const ExcelJS = require("exceljs");
-
+const { chromium } = require("playwright");
 const app = express();
 
 app.use(cors());
 app.use(express.json()); // Parse JSON bodies
 
-function getQueryUrl(query) {
-  const queryUrlBase = `https://www.amazon.in/s?k=${query}&tag=hitish04-21`;
+function getQueryUrl(query, page) {
+  const queryUrlBase = `https://www.amazon.in/s?k=${query}&page=${page}&tag=hitish04-21`;
   return queryUrlBase;
 }
 
-async function getAsin(query) {
-  query = query.replace(/%20/g, "+");
-  const queryUrl = getQueryUrl(query);
-  const { data } = await axios.get(queryUrl, {
-    headers: {
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      Host: "www.amazon.in",
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/111.0",
-      Pragma: "no-cache",
-      TE: "Trailers",
-      "Upgrade-Insecure-Requests": 1,
-    },
-  });
-  const dom = new JSDOM(data);
 
-  const Asin = [];
+async function getProducts(query, page, fields) {
+  const queryUrl = getQueryUrl(query, page);
 
-  const Asins = dom.window.document.querySelectorAll("[data-asin]");
+  const browser = await chromium.launch();
+  const context = await browser.newContext();
+  const pageObj = await context.newPage(); // Changed variable name to pageObj
 
-  for (let i = 0; i < Asins.length; i++) {
-    const asin = Asins[i].getAttribute("data-asin");
-    if (asin) {
-      Asin.push({
-        Asin: asin,
-        Url: `https://www.amazon.in/dp/` + asin,
-      });
+  await pageObj.goto(queryUrl);
+
+  const products = [];
+
+  const productElements = await pageObj.$$('.s-result-item');
+  const totalPagesElement = await pageObj.$('.s-pagination-ellipsis+ .s-pagination-disabled');
+  const totalPages = totalPagesElement ? await (await totalPagesElement.getProperty('textContent')).jsonValue() : 'N/A';
+
+  const promises = productElements.map(async (el) => {
+    const asin = await el.getAttribute('data-asin');
+    const titleElement = await el.$('h2 a');
+    const priceElement = await el.$('.a-price .a-offscreen');
+    const peopleBoughtElement = await el.$('.s-title-instructions-style+ .a-spacing-top-micro .a-color-secondary');
+    const imageElement = await el.$('.s-image');
+    const ratingsElement = await el.$('.a-size-small .a-link-normal span');
+    const mrpElement = await el.$('.aok-inline-block .a-text-price span');
+    const offElement = await el.$('.a-letter-space+ span');
+    const reviewRatingElement = await el.$('.aok-align-bottom');
+    const deliveryDateElement = await el.$('.a-row+ .a-row .a-text-bold');
+
+    if (asin && titleElement && priceElement && peopleBoughtElement && imageElement && ratingsElement && reviewRatingElement) {
+      const title = await (await titleElement.getProperty('textContent')).jsonValue();
+      const price = await (await priceElement.getProperty('textContent')).jsonValue();
+      const peopleBought = await (await peopleBoughtElement.getProperty('textContent')).jsonValue();
+      const imageUrl = await imageElement.getAttribute('src');
+      const ratings = await (await ratingsElement.getProperty('textContent')).jsonValue();
+      const mrp = mrpElement ? await (await mrpElement.getProperty('textContent')).jsonValue() : 'N/A';
+      const offer = offElement ? await (await offElement.getProperty('textContent')).jsonValue() : 'N/A';
+      const reviewRating = await (await reviewRatingElement.getProperty('textContent')).jsonValue();
+      const deliveryDate = deliveryDateElement ? await (await deliveryDateElement.getProperty('textContent')).jsonValue() : 'N/A';
+
+      let fieldsObj = {
+        Source: 'Amazon',
+        ASIN: asin,
+        Title: title,
+        Price: price,
+        "Product URL": `https://www.amazon.in/dp/${asin}`,
+        'People Bought In Last Month': peopleBought,
+        "Image URL": imageUrl,
+        Review: ratings,
+        MRP: mrp,
+        Off: offer,
+        Rating: reviewRating,
+        "Delivery Date": "Fastest Delivery by " + deliveryDate,
+        "Total Pages": totalPages
+      };
+
+      if (fields && fields !== 'full') {
+        const selectedFields = fields.split(',').map(field => field.trim());
+        fieldsObj = Object.fromEntries(
+          Object.entries(fieldsObj).filter(([key, value]) => selectedFields.includes(key))
+        );
+      }
+
+      products.push(fieldsObj);
     }
-  }
+  });
 
-  return Asin;
+  await Promise.all(promises);
+
+  await browser.close();
+
+  return products;
 }
 
-async function saveAsinData(format, data) {
-  switch (format) {
-    case "csv":
-      const csv = new ObjectsToCsv(data);
-      const formattedData = await csv.toString();
-      return formattedData;
-    case "xlsx":
-      const workbook = new ExcelJS.Workbook();
-      const sheet = workbook.addWorksheet("Sheet1");
-
-      // Add headers
-      const headers = Object.keys(data[0]);
-      sheet.addRow(headers);
-
-      // Add data
-      data.forEach(item => {
-        const row = [];
-        headers.forEach(header => {
-          row.push(item[header]);
-        });
-        sheet.addRow(row);
-      });
-
-      // Generate Excel file buffer
-      const buffer = await workbook.xlsx.writeBuffer();
-      return buffer;
-    case "json":
-      return JSON.stringify(data, null, 2);
-    default:
-      throw new Error("Invalid format");
-  }
-}
 
 
 app.get("/", async (req, res) => {
   const query = req.query.q;
-  const format = req.query.format;
-  const outputFields = req.query.fields?.split(",") || [];
+  const page = req.query.page || 1; // Default to page 1 if not provided
+  const fields = req.query.fields || 'full'; // Default to full fields if not provided
 
   if (!query) {
     return res.status(400).json({ error: "Query parameter 'q' is required" });
   }
 
   try {
-    const asins = await getAsin(query);
+    const products = await getProducts(query, page, fields);
 
-    let outputData = asins;
-
-    if (outputFields.length > 0) {
-      outputData = asins.map(asin => {
-        const filteredAsin = {};
-        outputFields.forEach(field => {
-          if (asin[field]) {
-            filteredAsin[field] = asin[field];
-          }
-        });
-        return filteredAsin;
-      });
-    }
-
-    if (!format) {
-      return res.json(outputData);
-    }
-
-    const fileContent = await saveAsinData(format, outputData);
-
-    // Return the file content as a download
-    res.setHeader('Content-Disposition', `attachment; filename="data.${format}"`);
-    res.setHeader('Content-Type', `application/${format}`);
-
-    res.send(fileContent);
+    res.json(products);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 // Export the Express app
 module.exports = app;
