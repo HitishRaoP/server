@@ -87,14 +87,7 @@ async function getAsin(query, page) {
     }
   });
 
-  const totalPagesElement = dom.window.document.querySelector(
-    ".s-pagination-ellipsis+ .s-pagination-disabled"
-  );
-  const totalPages = totalPagesElement
-    ? totalPagesElement.textContent.trim()
-    : "N/A";
-
-  return { "Total Pages": totalPages, products };
+  return  products || [];
 }
 
 function getQueryUrl(query, page) {
@@ -112,11 +105,11 @@ app.get("/", async (req, res) => {
   }
 
   try {
-    const asins = await getAsin(query, page); // Pass the page parameter to getAsin
-    const totalPages = parseInt(asins["Total Pages"]) || 1;
+    let asins = await getAsin(query, page); // Pass the page parameter to getAsin
 
-    if (page > totalPages) {
-      return res.status(404).json({ error: "Page does not exist" });
+    // Check if asins is an empty array and handle accordingly
+    if (asins.length === 0) {
+      return res.status(404).json({ error: "No products found" });
     }
 
     let outputData = asins;
