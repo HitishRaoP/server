@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const amazonApp = require("./amazon");
+const flipkartApp = require("./flipkart");
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -9,6 +10,7 @@ app.use(cors());
 app.use(express.json()); // Parse JSON bodies
 
 app.use("/amazon", amazonApp);
+app.use("/flipkart", flipkartApp);
 
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
