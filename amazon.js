@@ -7,11 +7,11 @@ const { JSDOM } = jsdom;
 const app = express();
 
 app.use(cors());
-app.use(express.json()); // Parse JSON bodies
+app.use(express.json()); 
 
-async function getAsin(query, page) {
+async function getProducts(query, page) {
   query = query.replace(/%20/g, "+");
-  const queryUrl = getQueryUrl(query, page); // Pass the page parameter to getQueryUrl
+  const queryUrl = getQueryUrl(query, page); 
   const { data } = await axios.get(queryUrl, {
     headers: {
       Accept:
@@ -98,24 +98,22 @@ function getQueryUrl(query, page) {
 app.get("/", async (req, res) => {
   const query = req.query.q;
   const outputFields = req.query.fields?.split(",") || [];
-  const page = parseInt(req.query.page) || 1; // Parse the page parameter
+  const page = parseInt(req.query.page) || 1; 
 
   if (!query) {
     return res.status(400).json({ error: "Query parameter 'q' is required" });
   }
 
   try {
-    let asins = await getAsin(query, page); // Pass the page parameter to getAsin
+    let asins = await getProducts(query, page); 
 
-    // Check if asins is an empty array and handle accordingly
     if (asins.length === 0) {
       return res.status(404).json({ error: "No products found" });
     }
 
     let outputData = asins;
-
     if (outputFields.length > 0) {
-      outputData = asins.products.map((asin) => {
+      outputData = asins.map((asin) => {
         const filteredAsin = {};
         outputFields.forEach((field) => {
           if (asin[field]) {
@@ -125,6 +123,7 @@ app.get("/", async (req, res) => {
         return filteredAsin;
       });
     }
+    
 
     res.json(outputData);
   } catch (error) {
